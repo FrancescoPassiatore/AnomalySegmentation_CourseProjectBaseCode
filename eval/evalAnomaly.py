@@ -11,7 +11,7 @@ import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
-
+import torch.nn.functional as F
 seed = 42
 
 # general reproducibility
@@ -34,6 +34,7 @@ def main():
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
     )  
+    parser.add_argument('--method', default="MSP", help="Method to use: MSP, MaxLogit, MaxEntropy, etc.")  # New parameter
     parser.add_argument('--loadDir',default="../trained_models/")
     parser.add_argument('--loadWeights', default="erfnet_pretrained.pth")
     parser.add_argument('--loadModel', default="erfnet.py")
@@ -42,6 +43,7 @@ def main():
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    
     args = parser.parse_args()
     anomaly_score_list = []
     ood_gts_list = []
@@ -50,11 +52,12 @@ def main():
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
 
-    modelpath = args.loadDir + args.loadModel
+    modelpath = args.loadDir + args.loadModel0
     weightspath = args.loadDir + args.loadWeights
 
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
+    print(f"Using method: {args.method}")  # Log the method
 
     model = ERFNet(NUM_CLASSES)
 
@@ -78,14 +81,23 @@ def main():
     print ("Model and weights LOADED successfully")
     model.eval()
     
-    image_paths = glob.glob(os.path.expanduser(args.input[0]))
-    for path in image_paths:
+    for path in glob.glob(os.path.expanduser(str(args.input))):
         print(path)
         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
         images = images.permute(0,3,1,2)
         with torch.no_grad():
             result = model(images)
-        anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)            
+            if args.method == "MSP":
+                softmax_probs = F.softmax(result, dim=1)
+                anomaly_result = 1.0 - np.max(softmax_probs.squeeze(0).cpu().numpy(), axis=0)
+            elif args.method == "MaxLogit":
+                anomaly_result = -1.0 * np.max(result.squeeze(0).cpu().numpy(), axis=0)
+            elif args.method == "MaxEntropy":
+                softmax_probs = F.softmax(result, dim=1)
+                anomaly_result = -1.0 * np.sum(softmax_probs.squeeze(0).cpu().numpy() * np.log(softmax_probs.squeeze(0).cpu().numpy() + 1e-5), axis=0)
+            else:
+                raise ValueError(f"Unknown method: {args.method}")
+                      
         pathGT = path.replace("images", "labels_masks")                
         if "RoadObsticle21" in pathGT:
            pathGT = pathGT.replace("webp", "png")

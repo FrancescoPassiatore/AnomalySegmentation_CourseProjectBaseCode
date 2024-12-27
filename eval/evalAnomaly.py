@@ -126,7 +126,10 @@ def main():
         else:
              ood_gts_list.append(ood_gts)
              anomaly_score_list.append(anomaly_result)
-        del result,softmax_probs, anomaly_result, ood_gts, mask
+        del result, anomaly_result, ood_gts, mask
+        if 'softmax_probs' in locals():
+            del softmax_probs
+
         torch.cuda.empty_cache()
 
     file.write( "\n")

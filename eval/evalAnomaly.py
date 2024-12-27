@@ -52,7 +52,7 @@ def main():
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
 
-    modelpath = args.loadDir + args.loadModel0
+    modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
 
     print ("Loading model: " + modelpath)
@@ -81,7 +81,7 @@ def main():
     print ("Model and weights LOADED successfully")
     model.eval()
     
-    for path in glob.glob(os.path.expanduser(str(args.input))):
+    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
         print(path)
         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
         images = images.permute(0,3,1,2)
@@ -126,7 +126,7 @@ def main():
         else:
              ood_gts_list.append(ood_gts)
              anomaly_score_list.append(anomaly_result)
-        del result, anomaly_result, ood_gts, mask
+        del result,softmax_probs, anomaly_result, ood_gts, mask
         torch.cuda.empty_cache()
 
     file.write( "\n")
@@ -152,7 +152,7 @@ def main():
     print(f'AUPRC score: {prc_auc*100.0}')
     print(f'FPR@TPR95: {fpr*100.0}')
 
-    file.write(('    AUPRC score:' + str(prc_auc*100.0) + '   FPR@TPR95:' + str(fpr*100.0) ))
+    file.write(('AUPRC score:' + str(prc_auc*100.0) + '   FPR@TPR95:' + str(fpr*100.0) ))
     file.close()
 
 if __name__ == '__main__':

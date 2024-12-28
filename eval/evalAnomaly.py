@@ -1,3 +1,4 @@
+
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
 import cv2
@@ -30,7 +31,6 @@ def main():
     parser.add_argument(
         "--input",
         default="/home/shyam/Mask2Former/unk-eval/RoadObsticle21/images/*.webp",
-        nargs="+",
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
     )  
@@ -81,7 +81,7 @@ def main():
     print ("Model and weights LOADED successfully")
     model.eval()
     
-    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
+    for path in glob.glob(os.path.expanduser(str(args.input))):
         print(path)
         images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
         images = images.permute(0,3,1,2)

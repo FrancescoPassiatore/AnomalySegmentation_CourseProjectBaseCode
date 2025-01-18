@@ -73,6 +73,7 @@ def main(args):
     if(not os.path.exists(args.datadir)):
         print ("Error: datadir could not be loaded")
 
+    temperature = float(args.temperature)
 
     loader = DataLoader(cityscapes(args.datadir, input_transform_cityscapes, target_transform_cityscapes, subset=args.subset), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
@@ -89,8 +90,18 @@ def main(args):
         inputs = Variable(images)
         with torch.no_grad():
             outputs = model(inputs)
+            
+            if temperature != 0:
+                scaled_logits = outputs/temperature
+            
+            # Apply softmax to get probabilities
+            softmax_probs = F.softmax(scaled_logits, dim=1)
 
-        iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
+            # Get the predicted class (max probability)
+            predicted_class = softmax_probs.max(1)[1]
+
+            # Add to IoU evaluation
+            iouEvalVal.addBatch(predicted_class.unsqueeze(1).data, labels)
 
         filenameSave = filename[0].split("leftImg8bit/")[1] 
 
@@ -145,5 +156,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    parser.add_argument('--temperature', type=float,default=0)
+
 
     main(parser.parse_args())

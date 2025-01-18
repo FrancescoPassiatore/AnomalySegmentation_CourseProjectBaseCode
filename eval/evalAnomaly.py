@@ -8,11 +8,14 @@ import random
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
+from enet import ENet
+from bisenetv1 import BiSeNetV1
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 import torch.nn.functional as F
+from torchvision.transforms import ToTensor
 seed = 42
 
 # general reproducibility
@@ -43,10 +46,13 @@ def main():
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    parser.add_argument('--temperature', type=float,default=0)
     
     args = parser.parse_args()
     anomaly_score_list = []
     ood_gts_list = []
+    
+    preprocess = ToTensor()
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
@@ -59,7 +65,12 @@ def main():
     print ("Loading weights: " + weightspath)
     print(f"Using method: {args.method}")  # Log the method
 
-    model = ERFNet(NUM_CLASSES)
+    if args.model == 'enet.py':
+      model = ENet(NUM_CLASSES)
+    elif args.model == 'bisenetv1.py':
+      model = BiSeNetV1(NUM_CLASSES)
+    elif args.model == 'erfnet.py':
+      model = ERFNet(NUM_CLASSES)
 
     if (not args.cpu):
         model = torch.nn.DataParallel(model).cuda()
@@ -81,22 +92,39 @@ def main():
     print ("Model and weights LOADED successfully")
     model.eval()
     
+    temperature = args.temperature
+    
     for path in glob.glob(os.path.expanduser(str(args.input))):
         print(path)
-        images = torch.from_numpy(np.array(Image.open(path).convert('RGB'))).unsqueeze(0).float()
-        images = images.permute(0,3,1,2)
+        images = Image.open(path).convert('RGB')
+        images = preprocess(images)
+        images = images.unsqueeze(0)
+        
         with torch.no_grad():
             result = model(images)
-            if args.method == "MSP":
-                softmax_probs = F.softmax(result, dim=1)
-                anomaly_result = 1.0 - np.max(softmax_probs.squeeze(0).cpu().numpy(), axis=0)
-            elif args.method == "MaxLogit":
-                anomaly_result = -1.0 * np.max(result.squeeze(0).cpu().numpy(), axis=0)
-            elif args.method == "MaxEntropy":
-                softmax_probs = F.softmax(result, dim=1)
-                anomaly_result = -1.0 * np.sum(softmax_probs.squeeze(0).cpu().numpy() * np.log(softmax_probs.squeeze(0).cpu().numpy() + 1e-5), axis=0)
+            if temperature != 0:
+                scaled_logits = result / temperature
+                softmax= F.softmax(scaled_logits,dim=1)
+                anomaly_result= 1.0 - torch.max(softmax,dim=1).values.squeeze(0)
+                anomaly_result=anomaly_result.cpu().numpy()
             else:
-                raise ValueError(f"Unknown method: {args.method}")
+                if args.method == "MSP":
+                    softmax = F.softmax(result, dim=1)
+                    anomaly_result = 1.0 - torch.max(softmax, dim=1).values.squeeze(0)  
+                    anomaly_result = anomaly_result.cpu().numpy() 
+                elif args.method == "MaxLogit":
+                    anomaly_result = -torch.max(result, dim=1).values.squeeze(0)  
+                    anomaly_result = anomaly_result.cpu().numpy() 
+                elif args.method == "MaxEntropy":
+                    probs = F.softmax(result,dim=1)
+                    entropy= -torch.sum(probs*torch.log(probs+ 1e-10),dim=1)
+                    anomaly_result = torch.max(entropy,dim=0)[0]        
+                    anomaly_result = anomaly_result.data.cpu().numpy().astype("float32")
+                elif args.method == "Void" :
+                    anomaly_result = F.softmax(result, dim=0)[-1]
+                    anomaly_result = anomaly_result.data.cpu().numpy()
+                else:
+                    raise ValueError(f"Unknown method: {args.method}")
                       
         pathGT = path.replace("images", "labels_masks")                
         if "RoadObsticle21" in pathGT:

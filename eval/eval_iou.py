@@ -93,15 +93,18 @@ def main(args):
             
             if temperature != 0:
                 scaled_logits = outputs/temperature
+                # Apply softmax to get probabilities
+                softmax_probs = F.softmax(scaled_logits, dim=1)
+
+                # Get the predicted class (max probability)
+                predicted_class = softmax_probs.max(1)[1]
+
+                # Add to IoU evaluation
+                iouEvalVal.addBatch(predicted_class.unsqueeze(1).data, labels)
             
-            # Apply softmax to get probabilities
-            softmax_probs = F.softmax(scaled_logits, dim=1)
-
-            # Get the predicted class (max probability)
-            predicted_class = softmax_probs.max(1)[1]
-
-            # Add to IoU evaluation
-            iouEvalVal.addBatch(predicted_class.unsqueeze(1).data, labels)
+            else:
+                
+                iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
 
         filenameSave = filename[0].split("leftImg8bit/")[1] 
 

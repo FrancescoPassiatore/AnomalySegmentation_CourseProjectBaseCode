@@ -8,14 +8,14 @@ import random
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
-from enet import ENet
-from bisenetv1 import BiSeNetV1
+#from enet import ENet
+#from bisenetv1 import BiSeNetV1
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 import torch.nn.functional as F
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor,Compose,Resize
 seed = 42
 
 # general reproducibility
@@ -52,7 +52,18 @@ def main():
     anomaly_score_list = []
     ood_gts_list = []
     
-    preprocess = ToTensor()
+    # Dimensioni target per immagini e maschere
+    size = (512, 1024)  # Cambia se necessario
+
+    # Trasformazioni per immagini e maschere
+    input_transform = Compose([
+        Resize(size, Image.BILINEAR),  # Ridimensiona immagini
+        ToTensor()  # Converte immagini in Tensor
+    ])
+
+    mask_transform = Compose([
+        Resize(size, Image.NEAREST)  # Ridimensiona maschere
+    ])
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
@@ -65,11 +76,11 @@ def main():
     print ("Loading weights: " + weightspath)
     print(f"Using method: {args.method}")  # Log the method
 
-    if args.model == 'enet.py':
+    if args.loadModel == 'enet.py':
       model = ENet(NUM_CLASSES)
-    elif args.model == 'bisenetv1.py':
+    elif args.loadModel == 'bisenetv1.py':
       model = BiSeNetV1(NUM_CLASSES)
-    elif args.model == 'erfnet.py':
+    elif args.loadModel == 'erfnet.py':
       model = ERFNet(NUM_CLASSES)
 
     if (not args.cpu):
@@ -97,11 +108,12 @@ def main():
     for path in glob.glob(os.path.expanduser(str(args.input))):
         print(path)
         images = Image.open(path).convert('RGB')
-        images = preprocess(images)
-        images = images.unsqueeze(0)
+        images = input_transform(images).unsqueeze(0).float()
+        # Aggiungi questo codice per verificare le dimensioni dell'immagine prima del passaggio nel modello
+        print("Dimensione dell'immagine prima del passaggio al modello:", images.shape)
         
         with torch.no_grad():
-            result = model(images)
+            result = model(images).squeeze(0)
             if temperature != 0:
                 scaled_logits = result / temperature
                 softmax= F.softmax(scaled_logits,dim=1)
@@ -117,9 +129,8 @@ def main():
                     anomaly_result = anomaly_result.cpu().numpy() 
                 elif args.method == "MaxEntropy":
                     probs = F.softmax(result,dim=1)
-                    entropy= -torch.sum(probs*torch.log(probs+ 1e-10),dim=1)
-                    anomaly_result = torch.max(entropy,dim=0)[0]        
-                    anomaly_result = anomaly_result.data.cpu().numpy().astype("float32")
+                    entropy= -torch.sum(probs*torch.log(probs+ 1e-10),dim=1) 
+                    anomaly_result = entropy.data.cpu().numpy().astype("float32")
                 elif args.method == "Void" :
                     anomaly_result = F.softmax(result, dim=0)[-1]
                     anomaly_result = anomaly_result.data.cpu().numpy()
@@ -135,6 +146,7 @@ def main():
            pathGT = pathGT.replace("jpg", "png")  
 
         mask = Image.open(pathGT)
+        mask = mask_transform(mask)
         ood_gts = np.array(mask)
 
         if "RoadAnomaly" in pathGT:
@@ -164,9 +176,20 @@ def main():
 
     ood_gts = np.array(ood_gts_list)
     anomaly_scores = np.array(anomaly_score_list)
+    print(type(anomaly_scores))
+    print(anomaly_scores.shape)
+
+    ##
+    # 1. Ottenere il batch_size dinamicamente
+    batch_size = anomaly_scores.shape[0]  # per ottenere la dimensione del batch
+    # 2. Ridimensionare anomaly_scores nella forma (batch_size, 512, 1024)
+    anomaly_scores = anomaly_scores.reshape(batch_size, 512, 1024)
 
     ood_mask = (ood_gts == 1)
     ind_mask = (ood_gts == 0)
+
+    print(f"Shape of anomaly_scores: {anomaly_scores.shape}")
+    print(f"Shape of ood_mask: {ood_mask.shape}")
 
     ood_out = anomaly_scores[ood_mask]
     ind_out = anomaly_scores[ind_mask]

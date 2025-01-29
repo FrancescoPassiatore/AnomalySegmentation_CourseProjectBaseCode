@@ -53,7 +53,7 @@ def main():
     ood_gts_list = []
     
     # Dimensioni target per immagini e maschere
-    size = (512, 1024)  # Cambia se necessario
+    size = (512, 1024)  
 
     # Trasformazioni per immagini e maschere
     input_transform = Compose([

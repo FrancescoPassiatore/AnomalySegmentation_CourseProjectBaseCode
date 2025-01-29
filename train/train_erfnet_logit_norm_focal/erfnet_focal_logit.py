@@ -75,19 +75,20 @@ class MyCoTransform(object):
 
 class LogitNormLoss(nn.Module):
 
-    def __init__(self, device, t=1.0):
+    def __init__(self, device, t=0.05):
         super(LogitNormLoss, self).__init__()
         self.device = device
+        self.loss = FocalLoss()
         self.t = t
 
     def forward(self, x, target):
         norms = torch.norm(x, p=2, dim=-1, keepdim=True) + 1e-7
         logit_norm = torch.div(x, norms) / self.t
-        return F.cross_entropy(logit_norm, target)
+        return self.loss(logit_norm, target)
     
 class FocalLoss(nn.Module):
 
-    def __init__(self, gamma=2, alpha=None, size_average=True):
+    def __init__(self, gamma=2.0, alpha=None, size_average=True):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
         self.alpha = alpha
@@ -120,16 +121,6 @@ class FocalLoss(nn.Module):
             return loss.mean()
         else:
             return loss.sum()
-    
-class CrossEntropyLoss2d(torch.nn.Module):
-
-    def __init__(self, weight=None):
-        super().__init__()
-
-        self.loss = torch.nn.NLLLoss2d(weight)
-
-    def forward(self, outputs, targets):
-        return self.loss(torch.nn.functional.log_softmax(outputs, dim=1), targets)
 
 
 def train(args, model, enc=False):
@@ -193,8 +184,7 @@ def train(args, model, enc=False):
     if args.cuda:
         weight = weight.cuda()
 
-    criterion_logit = LogitNormLoss(args.cuda, t=0.05)
-    criterion_focal = FocalLoss(gamma=2)
+    criterion = LogitNormLoss(args.cuda)
     
 
     savedir = f'../save/{args.savedir}'
@@ -271,10 +261,7 @@ def train(args, model, enc=False):
             outputs = model(inputs)
 
             optimizer.zero_grad()
-            loss_logit = criterion_logit(outputs, targets[:, 0])
-            loss_focal = criterion_focal(outputs, targets[:, 0])
-
-            loss = loss_logit + loss_focal
+            loss = criterion(outputs, targets[:, 0])
             
             loss.backward()
             optimizer.step()
@@ -331,10 +318,7 @@ def train(args, model, enc=False):
             targets = Variable(labels, volatile=True)
             outputs = model(inputs) 
 
-            loss_logit = criterion_logit(outputs, targets[:, 0])
-            loss_focal = criterion_focal(outputs, targets[:, 0])
-
-            loss =loss_logit + loss_focal
+            loss = criterion(outputs, targets[:, 0])
 
             epoch_loss_val.append(loss.item())
             time_val.append(time.time() - start_time)

@@ -162,7 +162,8 @@ def train(args, model, enc=False):
 
     weight=0
     weight = enet_weighing(loader,NUM_CLASSES)
-    np.save(f"/weights/weights_enet.npy", weight)
+    os.makedirs("./weights", exist_ok=True)
+    np.save("./weights/weights_enet.npy", weight)
     
     if weight is not None:
         weight = torch.from_numpy(weight).float()

@@ -160,11 +160,21 @@ def train(args, model, enc=False):
     loader = DataLoader(dataset_train, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True)
     loader_val = DataLoader(dataset_val, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
-    weight=0
-    weight = enet_weighing(loader,NUM_CLASSES)
-    os.makedirs("./weights", exist_ok=True)
-    np.save("./weights/weights_enet.npy", weight)
-    
+    file_path = "./weights/weights_enet.npy"
+
+    # Controlla se il file esiste
+    if os.path.exists(file_path):
+        print("Caricamento pesi esistenti...")
+        weight = np.load(file_path)  # Carica i pesi esistenti
+    else:
+        print("Calcolo e salvataggio nuovi pesi...")
+        weight = enet_weighing(loader, NUM_CLASSES)  # Calcola i pesi
+        os.makedirs("./weights", exist_ok=True)
+        np.save(file_path, weight)  # Salva i pesi
+
+    print("Pesi pronti all'uso.")
+
+
     if weight is not None:
         weight = torch.from_numpy(weight).float()
         if args.cuda:
@@ -432,7 +442,7 @@ def main(args):
         model = load_my_state_dict(model, torch.load(args.state))
         
     print("========== TRAINING STARTED ===========")
-    model = train(args, model)   #Train decoder
+    model = train(args, model)   
     print("========== TRAINING FINISHED ===========")
 
 if __name__ == '__main__':

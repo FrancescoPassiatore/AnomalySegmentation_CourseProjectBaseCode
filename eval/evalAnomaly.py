@@ -113,7 +113,7 @@ def main():
         print("Dimensione dell'immagine prima del passaggio al modello:", images.shape)
         
         with torch.no_grad():
-            result = model(images).squeeze(0)
+            result = model(images)
             if temperature != 0:
                 scaled_logits = result / temperature
                 softmax= F.softmax(scaled_logits,dim=1)
@@ -178,12 +178,8 @@ def main():
     anomaly_scores = np.array(anomaly_score_list)
     print(type(anomaly_scores))
     print(anomaly_scores.shape)
-
-    ##
-    # 1. Ottenere il batch_size dinamicamente
-    batch_size = anomaly_scores.shape[0]  # per ottenere la dimensione del batch
-    # 2. Ridimensionare anomaly_scores nella forma (batch_size, 512, 1024)
-    anomaly_scores = anomaly_scores.reshape(batch_size, 512, 1024)
+    if args.method == "MaxEntropy":
+      anomaly_scores = anomaly_scores.squeeze(1)
 
     ood_mask = (ood_gts == 1)
     ind_mask = (ood_gts == 0)
